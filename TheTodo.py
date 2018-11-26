@@ -2,7 +2,6 @@ import os
 import sys
 import sqlite3 as sq3
 from datetime import datetime
-import asyncio
 
 ### 界面 ###
 
@@ -43,9 +42,10 @@ def display_todo():
     print('1. 建立項目')
     print('2. 修改項目')
     print('3. 刪除項目')
-    print('4. 清除完成')
-    print('5. 回到上層')
-    print('5. 結束程式')
+    print('4. 完成項目')
+    print('5. 清除完成')
+    print('6. 回到上層')
+    print('7. 結束程式')
     print()
     print('=========================')
 
@@ -53,22 +53,24 @@ def display_todo():
 
 class ToDoDate:
 
-    def __init__(self, dbname):
+    nowdir = os.path.abspath(os.path.dirname(__file__))
+    dbname = '/'.join([nowdir, 'todo.db'])
+    tablist = list()
+    
+    def __init__(self):
         '''
 
         SQLite會自動維護一個系統表單「sqlite_master」，
         裡面會有我們創建的表單信息。
 
         '''
-        self.conn = sq3.connect(dbname)
-        
-        #self.table_rows = self.cur.fetchall()
+        self.conn = sq3.connect(self.dbname)
         self.func = lambda x : x != 'sqlite_sequence'
-        self.tablist =list()
-        self.name = None
+        #self.name = None
         
     
     def table_view(self):
+        self.conn.commit()
         cur = self.conn.execute('SELECT * FROM sqlite_master')
         table_rows = cur.fetchall()
         now_plat()
@@ -86,7 +88,6 @@ class ToDoDate:
             self.tablist.clear()
         else:
             print('尚未建立清單！')
-        
         switch_list()
         
     
@@ -96,10 +97,10 @@ class ToDoDate:
             f'''CREATE TABLE {name} (
                 ID INTEGER PRIMARY KEY AUTOINCREMENT,
                 CONTENT TEXT,
-                DATE TEXT,
+                NOWDATE TEXT,
+                COMPLETE TEXT,
                 STATUS TEXT
             )''' )
-        self.conn.commit()
         self.table_view()
             
 
@@ -110,20 +111,17 @@ class ToDoDate:
             f'''ALTER TABLE '{old}'
             RENAME TO '{new}' '''
         )
-        self.conn.commit()
         self.table_view()
         
 
     def sel_deltab(self):
         tab = input('請輸入清單名稱：')
-        self.conn.execute(f'DROP TABLE {tab}')
-        self.conn.commit()
+        self.conn.execute(f"DROP TABLE '{tab}'")
         self.table_view()
 
 
     def choice_tab(self):
         cur = self.item_view()
-        print(cur)
         cur.send(None)
         tab_name = input('請選擇清單：')
         cur.send(tab_name)
@@ -138,7 +136,7 @@ class ToDoDate:
         print(tab_name)
         print('=========================')
         print()
-        for dex, tab, date, _ in rows:
+        for dex, tab, date, _ , _ in rows:
             print(dex, tab, date)
         print()
         print('=========================')
@@ -155,12 +153,13 @@ class ToDoDate:
 
 
 class Cho_Item(ToDoDate):
-    def __init__(self, dbname):
-        super().__init__(dbname)
+    def __init__(self):
+        super().__init__()
         self.tab_name = None
     
 
     def view(self):
+        self.conn.commit()
         cur = self.conn.execute(f'SELECT * FROM {self.tab_name}')
         rows = cur.fetchall()
         now_plat()
@@ -168,7 +167,7 @@ class Cho_Item(ToDoDate):
         print(self.tab_name)
         print('=========================')
         print()
-        for dex, tab, date, _ in rows:
+        for dex, tab, date, _ , _ in rows:
             print(dex, tab, date)
         print()
         print('=========================')
@@ -177,32 +176,57 @@ class Cho_Item(ToDoDate):
 
 
     def sql_insert(self, name):
-        #name = input('請輸入清單名稱：')
-        self.name = name
+        self.tab_name = name
         item = input('請輸入待辦事項：')
         dt = datetime.now()
-        nowdate = dt.strftime('%F')
-        #self.name = name
+        nowdate = dt.strftime('%F-%H:%M')
         self.conn.execute(
-            f'''INSERT INTO {name} (CONTENT, DATE, STATUS)
-            VALUES ('{item}', '{nowdate}', 0)''')
-        self.conn.commit()
+            f'''INSERT INTO {name} (CONTENT, NOWDATE, COMPLETE, STATUS)
+            VALUES ('{item}', '{nowdate}', 0, 0)''')
         self.view()
         
     
     def sql_update(self, name):
-        #name = input('清單名稱：')
+        self.tab_name = name
         num = int(input('項目編號：'))
         cent = input('修改內容：')
-        
         self.conn.execute(
             f'''UPDATE {name}
             SET CONTENT = '{cent}'
             WHERE ID = {num}
             ''')
-        self.conn.commit()
-        self.name = name
         self.view()
+    
+
+    def sql_complete(self, name):
+        self.tab_name = name
+        num = int(input('項目編號：'))
+        dt = datetime.now()
+        nowdate = dt.strftime(f'%F-%H:%M')
+        self.conn.execute(
+            f'''UPDATE {name}
+            SET COMPLETE = '{nowdate}', STATUS = 1
+            WHERE ID = {num}
+            ''')
+        self.view()
+    
+    def sql_delcomp(self, name):
+        self.tab_name = name
+        act = input('確定刪除請輸入y,若否則n：')
+        if act == 'y':
+            self.conn.execute(f'DELETE FROM {name} WHERE STATUS = 1')
+        self.view()
+
+    
+    def sql_delitem(self, name):
+        self.tab_name = name
+        num = input('項目編號：')
+        self.conn.execute(f"DELETE FROM {name} WHERE ID = '{num}'")
+        self.view()
+
+    
+    def sql_toup(self):
+        self.table_view()
 
 
 def switch_list():
@@ -214,27 +238,31 @@ def switch_list():
         '3': data.sel_deltab,
         '4': sys.exit
     }
-    
     return list_dict.get(num, sys.exit)()
 
+
 def switch_todo(name):
-    id_num = input('選擇功能:')
     todo_dict = {
-        #0: pass,
+        '0': None,
         '1': cho_data.sql_insert,
         '2': cho_data.sql_update,
-        #3: pass,
-        #4: pass,
-        #5: pass,
-        '6': sys.exit
+        '3': cho_data.sql_delitem,
+        '4': cho_data.sql_complete,
+        '5': cho_data.sql_delcomp,
+        '6': cho_data.sql_toup,
+        '7': sys.exit
     }
-    return todo_dict.get(id_num, sys.exit)(name)
+    id_num = input('選擇功能:')
+    if id_num == '6' and '7':
+        return todo_dict.get(id_num, sys.exit)()
+    else:
+        return todo_dict.get(id_num, sys.exit)(name)
+
 
 ### main ###
 
-nowdir = os.path.abspath(os.path.dirname(__file__))
-data = ToDoDate('/'.join([nowdir, 'todo.db']))
-cho_data = Cho_Item('/'.join([nowdir, 'todo.db']))
+data = ToDoDate()
+cho_data = Cho_Item()
 
 try:
     display_list()
@@ -242,7 +270,7 @@ try:
             
 except Exception as e:
     print(e)
-    
+
 finally:
     data.sql_close()
 
