@@ -61,15 +61,19 @@ class ToDoDate:
 
         '''
         self.conn = sq3.connect(dbname)
-        self.cur = self.conn.execute('SELECT * FROM sqlite_master')
+        
+        #self.table_rows = self.cur.fetchall()
         self.func = lambda x : x != 'sqlite_sequence'
         self.tablist =list()
         self.name = None
         
     
     def table_view(self):
-        table_rows = self.cur.fetchall()
-        if table_rows:
+        cur = self.conn.execute('SELECT * FROM sqlite_master')
+        table_rows = cur.fetchall()
+        now_plat()
+        display_list()
+        if table_rows: 
             for r in filter(self.func, [row[1] for row in table_rows]):
                 self.tablist.append(r)
             print('=========================')
@@ -83,6 +87,8 @@ class ToDoDate:
         else:
             print('尚未建立清單！')
         
+        switch_list()
+        
     
     def sql_create(self):
         name = input('請輸入清單名稱：')
@@ -94,8 +100,6 @@ class ToDoDate:
                 STATUS TEXT
             )''' )
         self.conn.commit()
-        now_plat()
-        display_list()
         self.table_view()
             
 
@@ -103,12 +107,10 @@ class ToDoDate:
         old = input('請輸入舊清單名稱：')
         new = input('請輸入欲更改名稱：')
         self.conn.execute(
-            f'''ALTER TABLE {old}
-            RENAME TO {new}'''
+            f'''ALTER TABLE '{old}'
+            RENAME TO '{new}' '''
         )
         self.conn.commit()
-        now_plat()
-        display_list()
         self.table_view()
         
 
@@ -116,13 +118,12 @@ class ToDoDate:
         tab = input('請輸入清單名稱：')
         self.conn.execute(f'DROP TABLE {tab}')
         self.conn.commit()
-        now_plat()
-        display_list()
         self.table_view()
 
 
     def choice_tab(self):
         cur = self.item_view()
+        print(cur)
         cur.send(None)
         tab_name = input('請選擇清單：')
         cur.send(tab_name)
@@ -142,8 +143,7 @@ class ToDoDate:
         print()
         print('=========================')
         print()
-        num = input('選擇功能1：')
-        switch_todo(num)
+        switch_todo(tab_name)
         
 
     def sql_send(self):
@@ -157,15 +157,15 @@ class ToDoDate:
 class Cho_Item(ToDoDate):
     def __init__(self, dbname):
         super().__init__(dbname)
-        self.name = None
+        self.tab_name = None
     
 
     def view(self):
-        self.cur = self.conn.execute(f'SELECT * FROM {self.name}')
-        rows = self.cur.fetchall()
+        cur = self.conn.execute(f'SELECT * FROM {self.tab_name}')
+        rows = cur.fetchall()
         now_plat()
         display_todo()
-        print(self.name)
+        print(self.tab_name)
         print('=========================')
         print()
         for dex, tab, date, _ in rows:
@@ -173,52 +173,62 @@ class Cho_Item(ToDoDate):
         print()
         print('=========================')
         print()
+        switch_todo(self.tab_name)
 
 
-    def sql_insert(self):
-        name = input('請輸入清單名稱：')
+    def sql_insert(self, name):
+        #name = input('請輸入清單名稱：')
+        self.name = name
         item = input('請輸入待辦事項：')
         dt = datetime.now()
         nowdate = dt.strftime('%F')
+        #self.name = name
         self.conn.execute(
             f'''INSERT INTO {name} (CONTENT, DATE, STATUS)
             VALUES ('{item}', '{nowdate}', 0)''')
         self.conn.commit()
-        now_plat()
-        display_todo()
-        self.name = name
         self.view()
         
     
-    def sql_update(self, cent, sta, num):
+    def sql_update(self, name):
+        #name = input('清單名稱：')
+        num = int(input('項目編號：'))
+        cent = input('修改內容：')
+        
         self.conn.execute(
-            f'''UPDATE {self.sql_create()}
-            SET CONTENT = {cent}, STATUS = {sta}
+            f'''UPDATE {name}
+            SET CONTENT = '{cent}'
             WHERE ID = {num}
             ''')
+        self.conn.commit()
+        self.name = name
+        self.view()
 
 
-def switch_list(id_num):
+def switch_list():
+    num = input('選擇功能:')
     list_dict = {
-        0: data.choice_tab(),
-        1: data.sql_create(),
-        2: data.sql_alter(),
-        3: data.sel_deltab(),
-        4: sys.exit()
+        '0': data.choice_tab,
+        '1': data.sql_create,
+        '2': data.sql_alter,
+        '3': data.sel_deltab,
+        '4': sys.exit
     }
-    return list_dict.get(id_num, sys.exit())
+    
+    return list_dict.get(num, sys.exit)()
 
-def switch_todo(id_num):
+def switch_todo(name):
+    id_num = input('選擇功能:')
     todo_dict = {
         #0: pass,
-        1: cho_data.sql_insert()
-        #2: pass,
+        '1': cho_data.sql_insert,
+        '2': cho_data.sql_update,
         #3: pass,
         #4: pass,
         #5: pass,
-        #6: pass
+        '6': sys.exit
     }
-    return todo_dict.get(id_num, sys.exit())
+    return todo_dict.get(id_num, sys.exit)(name)
 
 ### main ###
 
@@ -226,12 +236,13 @@ nowdir = os.path.abspath(os.path.dirname(__file__))
 data = ToDoDate('/'.join([nowdir, 'todo.db']))
 cho_data = Cho_Item('/'.join([nowdir, 'todo.db']))
 
-display_list()
-data.table_view()
-data.item_view()
-
-print()
-id_num = input('選擇功能:')
-switch_list(id_num)
-data.sql_close()
+try:
+    display_list()
+    data.table_view()
+            
+except Exception as e:
+    print(e)
+    
+finally:
+    data.sql_close()
 
